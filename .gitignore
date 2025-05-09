@@ -1,0 +1,11 @@
+/result
+__pycache__
+*.pyc
+
+*.pkl
+*.txt
+*.pdf
+*.csv
+*.png
+*.jpg
+*.wps
