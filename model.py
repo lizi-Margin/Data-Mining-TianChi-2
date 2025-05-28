@@ -33,10 +33,10 @@ def get_best_xgb_model(train_data, **kwargs):
         # use bayesian opt to find the best xgb model
         # define the search space
         param_rf = {
-            'n_estimators': Integer(40, 50),
-            'max_depth': Integer(50, 60),
-            # 'min_samples_split': Integer(2, 3),
-            # 'criterion': Categorical(['absolute_error']),
+            'n_estimators': Integer(40, 300),
+            'max_depth': Integer(5, 60),
+            'min_samples_split': Integer(2, 3),
+            'criterion': Categorical(['absolute_error']),
         }
         # define the model
         model = xgb.XGBRegressor(n_jobs=1)
@@ -62,8 +62,9 @@ def get_best_xgb_model(train_data, **kwargs):
         if not LOAD:
             model = xgb.XGBRegressor(
                 n_jobs=kwargs['NJ'],
-                n_estimators=150,
-                max_depth=7,
+                n_estimators=3200,
+                max_depth=4,
+                criterion='absolute_error'
             )
 
             model.fit(X_train, y_train)
@@ -76,6 +77,67 @@ def get_best_xgb_model(train_data, **kwargs):
                 model = model.best_estimator_
             else:
                 model = joblib.load('xgb_model.pkl')
+
+    return model
+
+
+
+def get_best_lgb_model(train_data, **kwargs):
+    from lightgbm import LGBMRegressor
+    col_a = kwargs['col_a']  # id
+    col_b = kwargs['col_b']  # price
+
+    # 划分训练集和测试集
+    X_train, y_train = train_data.drop(columns=[col_a, col_b]), train_data[col_b]
+
+    if kwargs['search']:
+        assert False
+    else:
+        LOAD = False
+        if not LOAD:
+            model = LGBMRegressor(
+                n_jobs=kwargs['NJ'],
+                n_estimators=4200,
+                max_depth=-1,
+            )
+
+            model.fit(X_train, y_train)
+            joblib.dump(model, 'xgb_model.pkl')
+            print("Model saved")
+        else:
+            pass
+
+    return model
+
+
+
+def get_best_svm_model(train_data, **kwargs):
+    col_a = kwargs['col_a']  # id
+    col_b = kwargs['col_b']  # price
+
+    # 划分训练集和测试集
+    X_train, y_train = train_data.drop(columns=[col_a, col_b]), train_data[col_b]
+
+    if kwargs['search']:
+        assert False
+    else:
+        LOAD = False
+        if not LOAD:
+            model = SVR(
+                n_jobs=kwargs['NJ'],
+                kernel='rbf',
+                C=1.0,
+                epsilon=0.1,
+                gamma='scale',
+                verbose=True,
+                max_iter=-1,
+            )
+
+            model.fit(X_train, y_train)
+            joblib.dump(model, 'xgb_model.pkl')
+            print("Model saved")
+        else:
+            pass
 
     return model
 
@@ -119,10 +181,14 @@ def get_best_rf_model(train_data, **kwargs):
         joblib.dump(model, 'rf_model.pkl')
         print("Model saved")
     else:
-        LOAD = False
+        LOAD = True
         if not LOAD:
             model = RandomForestRegressor(
-                n_jobs=kwargs['NJ']
+                n_jobs=kwargs['NJ'],
+                n_estimators=800,
+                max_depth=None,
+                # criterion="absolute_error",
+                min_samples_split=3,
             )
             model.fit(X_train, y_train)
             joblib.dump(model, 'rf_model.pkl')
@@ -205,5 +271,6 @@ def get_soft_voting_model(trained_models: list, train_data, **kwargs):
         def predict(self, X):
             predictions = np.array([model.predict(X) for model in self.models])
             return np.mean(predictions, axis=0)
+            # return np.median(predictions, axis=0)
     model = SoftVotingRegressor(trained_models)
     return model

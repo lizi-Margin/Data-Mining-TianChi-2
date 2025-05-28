@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from mapping import *
 
 def get_mae(model, eval_data, **kwargs):
     col_a = kwargs['col_a']  # id
@@ -13,7 +14,7 @@ def get_mae(model, eval_data, **kwargs):
     model_name = model.__class__.__name__
     print(f'Model: {model_name}')
     y_pred = model.predict(X)
-    mae = mean_absolute_error(y, y_pred)
+    mae = mean_absolute_error(decode(y), decode(y_pred))
     print(f'MAE: {mae:.4f}')
     return mae
 
@@ -26,6 +27,8 @@ def eval_metrics(model, eval_data, **kwargs):
     model_name = model.__class__.__name__
     print(f'Model: {model_name}')
     y_pred = model.predict(X)
+    y = decode(y)
+    y_pred = decode(y_pred)
     mae = mean_absolute_error(y, y_pred)
     mse = mean_squared_error(y, y_pred)
     rmse = np.sqrt(mse)

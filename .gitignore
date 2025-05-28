@@ -9,3 +9,12 @@ __pycache__
 *.png
 *.jpg
 *.wps
+
+/.*
+/lightning_logs
+
+*.ckpt
+*.pth
+*.pt
+*.npy
+/extern/*

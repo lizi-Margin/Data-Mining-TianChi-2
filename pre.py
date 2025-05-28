@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from mapping import encode, decode
 
 def get_nc(data: pd.DataFrame):
     categorical_features = data.select_dtypes(include=['object', 'category', 'datetime', 'timedelta']).columns.tolist()
@@ -115,7 +116,80 @@ def fix_convert(train_data: pd.DataFrame, test_data: pd.DataFrame, **kwargs):
     
     return train_data, test_data
 
+def compare_feat(train_data, test_data):
+    #合并进行对比, 同一个特征放在同一个图，用不同颜色进行展示，进而对比测试和训练集的分布，用sns
+    # 为数据添加来源标签并重置索引
+    train_data_ = train_data.copy().assign(dataset='训练集').reset_index(drop=True)
+    test_data_ = test_data.copy().assign(dataset='测试集').reset_index(drop=True)
+    
+    # 合并数据集（确保列一致）
+    common_cols = list(set(train_data_.columns) & set(test_data_.columns))
+    combined_data = pd.concat([
+        train_data_[common_cols + ['dataset']], 
+        test_data_[common_cols + ['dataset']]
+    ], ignore_index=True)
+    
+    # 获取数值型特征列
+    numeric_cols = [col for col in common_cols 
+                   if pd.api.types.is_numeric_dtype(combined_data[col])]
+    
+    # 设置子图布局
+    n_cols = 3
+    n_rows = (len(numeric_cols) + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 5*n_rows))
+    
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+    
+    # 为每个数值特征绘制分布对比图
+    for i, col in enumerate(numeric_cols):
+        row_idx = i // n_cols
+        col_idx = i % n_cols
+        ax = axes[row_idx, col_idx]
+        
+        try:
+            # 确保数据是1D的
+            plot_data = combined_data[[col, 'dataset']].dropna()
+            if len(plot_data) == 0:
+                continue
+                
+            sns.histplot(data=plot_data, x=col, hue='dataset', 
+                        element='step', stat='density', common_norm=False, 
+                        kde=True, ax=ax, alpha=0.5, bins=30)
+            ax.set_title(f'{col} 分布对比', fontsize=12)
+            ax.set_xlabel('')
+            ax.legend(title='数据集')
+        except Exception as e:
+            print(f"无法绘制列 {col} 的分布图: {str(e)}")
+            ax.set_title(f'{col} (绘图失败)')
+            ax.set_visible(False)
+    
+    # 隐藏多余的子图
+    for j in range(i+1, n_rows * n_cols):
+        row_idx = j // n_cols
+        col_idx = j % n_cols
+        axes[row_idx, col_idx].set_visible(False)
+    
+    plt.tight_layout()
+    plt.savefig('特征分布对比.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+def deal_with_notRepairedDamage(train_data, test_data):
+    train_data['notRepairedDamage'] = train_data['notRepairedDamage'].replace('1.0', 'yes')
+    train_data['notRepairedDamage'] = train_data['notRepairedDamage'].replace('0.0', 'no')
+    train_data['notRepairedDamage'] = train_data['notRepairedDamage'].replace('-', 'unknown')
+    test_data['notRepairedDamage'] = test_data['notRepairedDamage'].replace('1.0', 'yes')
+    test_data['notRepairedDamage'] = test_data['notRepairedDamage'].replace('0.0', 'no')
+    test_data['notRepairedDamage'] = test_data['notRepairedDamage'].replace('-', 'unknown')
+    train_data['notRepairedDamage'] = train_data['notRepairedDamage'].astype('object')
+    test_data['notRepairedDamage'] = test_data['notRepairedDamage'].astype('object')
+    train_data.drop(columns=['notRepairedDamage'], inplace=True)
+    test_data.drop(columns=['notRepairedDamage'], inplace=True)
+    return train_data, test_data
+
 def 数据特征(train_data: pd.DataFrame, test_data: pd.DataFrame, **kwargs):
+    train_data, test_data = deal_with_notRepairedDamage(train_data, test_data) 
+
     train_data, test_data = fix_convert(train_data, test_data, **kwargs)
     train_data.hist(bins=50,figsize=(20,15))
     plt.savefig('hist_train.png')
@@ -125,11 +199,15 @@ def 数据特征(train_data: pd.DataFrame, test_data: pd.DataFrame, **kwargs):
     plt.clf()
 
     # 自动生成 categorical_features 和 numeric_features
-    numeric_features, categorical_features = get_nc(train_data)
+    
+    
 
+    numeric_features, categorical_features = get_nc(train_data)
     print("Categorical Features:", categorical_features)
     print("Numeric Features:", numeric_features)
     print(train_data.columns)
+    for col in categorical_features:
+        print("dtype of {}: {}".format(col, train_data[col].dtype))
 
     return train_data, test_data
 
@@ -139,9 +217,13 @@ def 数据分布(train_data, test_data, **kwargs):
     plt.hist(train_data['price'], bins=50, orientation='vertical', histtype='bar', color='red')
     plt.savefig('Price Distribution Raw.png')
     plt.clf()
+    # 计算并打印偏度和峰度
+    print("Skewness: %f" % train_data['price'].skew())
+    print("Kurtosis: %f" % train_data['price'].kurt())
+
 
     # 目标变量进行对数变换（使其更接近正态分布）
-    train_data['price'] = np.log1p(train_data['price'])
+    train_data['price'] = encode(train_data['price'])
     # 绘制对数变换后的价格分布直方图
     plt.hist(train_data['price'], orientation='vertical', histtype='bar', color='red')
     plt.title('Log-Transformed Price Distribution')
@@ -188,7 +270,7 @@ def 数据质量(train_data, test_data, **kwargs):
     missing.sort_values(inplace=True)
     missing.plot.bar()
     # 减小x轴字体
-    plt.xticks(fontsize=6)
+    plt.xticks(fontsize=15)
     plt.savefig('missing_train.png')
     plt.clf()
 
@@ -199,7 +281,7 @@ def 数据质量(train_data, test_data, **kwargs):
     missing.sort_values(inplace=True)
     missing.plot.bar()
     # 减小x轴字体
-    plt.xticks(fontsize=6)
+    plt.xticks(fontsize=15)
     plt.savefig('missing_test.png')
     plt.clf()
     return train_data, test_data
@@ -211,8 +293,6 @@ def 数据清洗(train_data, test_data, **kwargs):
         if col!= 'price':
             train_data[col].fillna(train_data[col].median(), inplace=True)
             test_data[col].fillna(test_data[col].median(), inplace=True)
-    
-    
 
     return train_data, test_data
 
@@ -251,7 +331,16 @@ def 特征处理(train_data, test_data, **kwargs):
 
     numeric_features, categorical_features = get_nc(train_data)
     assert len(categorical_features) == 0, f"categorical features should be empty: {categorical_features}"
-    
+
+    # 编码后特征,可视化都有什么特征
+    print("编码后特征:")
+    print(train_data.columns)
+    print(len(train_data.columns))
+    print(test_data.columns)
+    print(len(test_data.columns))
+    print(train_data.shape)
+    print(test_data.shape)
+
     return train_data, test_data
 
 def 特征选择与构造(train_data, test_data, **kwargs):
@@ -261,9 +350,10 @@ def 特征选择与构造(train_data, test_data, **kwargs):
     correlation = train_data[numeric_features].corr()
     # visualize correlation matrix
     plt.figure(figsize=(12, 8))
-    sns.heatmap(correlation, annot=True, cmap='coolwarm', fmt=".2f")
+    sns.heatmap(correlation, annot=True, cmap='coolwarm')
     plt.title('Correlation Matrix')
     plt.savefig('Correlation Matrix.png')
+    plt.clf()
 
     # 对与price的相关系数进行排序并输出
     corr_vector = correlation['price'].sort_values()
@@ -271,7 +361,9 @@ def 特征选择与构造(train_data, test_data, **kwargs):
     plt.figure(figsize=(12, 8))
     sns.barplot(x=corr_vector.index, y=corr_vector.values)
     plt.title('Correlation Vector')
-    plt.xticks(rotation=90)
+    plt.xticks(rotation=80, fontsize=10)
+    plt.savefig('Correlation Vector.png')
+    plt.clf()
 
 
     if False:
@@ -287,41 +379,52 @@ def 特征选择与构造(train_data, test_data, **kwargs):
 
     X = train_data.drop(['price'], axis=1)
     y = train_data['price']
-    # xgb特征重要性
-    import xgboost as xgb
+    # # xgb特征重要性
+    # import xgboost as xgb
+    # from xgboost import plot_importance
 
-    model = xgb.XGBRegressor(n_jobs=kwargs['NJ'])
-    model.fit(X, y)
-    # plot feature importance
-    plt.figure(figsize=(12, 8))
-    xgb.plot_importance(model)
-    plt.title('Feature Importance xgb')
-    plt.savefig('Feature Importance xgb.png')
-    plt.clf()
+    # model = xgb.XGBRegressor(n_jobs=kwargs['NJ'])
+    # model.fit(X, y)
+    # # plot feature importance
+    # plt.figure(figsize=(12, 10)) 
+    # ax = plot_importance(
+    #     model, 
+    #     importance_type='weight', 
+    #     show_values=True
+    # )
+    # for text in ax.texts:
+    #     text.set_fontsize(6) 
 
-    # 随机森林特征重要性
-    from sklearn.ensemble import RandomForestRegressor
-    model = RandomForestRegressor(n_jobs=kwargs['NJ'])
-    model.fit(X, y)
-    # plot feature importance
-    plt.figure(figsize=(12, 8))
-    sns.barplot(x=model.feature_importances_, y=X.columns)
-    plt.title('Feature Importance RandomForest')
-    plt.savefig('Feature Importance RandomForest.png')
-    plt.clf()
+    # plt.yticks(fontsize=6)
+    # plt.tight_layout()  
+    # plt.title('XGBoost Feature Importance')
+    # plt.savefig('Feature Importance xgb.png', bbox_inches='tight', dpi=300)
+    # plt.clf()
+    # print("xgb Feature Importance saved")
 
-    # 线性回归特征重要性
-    from sklearn.linear_model import LinearRegression
-    model = LinearRegression(n_jobs=kwargs['NJ'])
-    model.fit(X, y)
-    from copy import copy
-    coef = abs(copy(model.coef_))
-    # plot feature importance
-    plt.figure(figsize=(12, 8))
-    sns.barplot(x=coef, y=X.columns)
-    plt.title('Feature Importance LinearRegression')
-    plt.savefig('Feature Importance LinearRegression.png')
-    plt.clf()
+    # # 随机森林特征重要性
+    # from sklearn.ensemble import RandomForestRegressor
+    # model = RandomForestRegressor(n_jobs=kwargs['NJ'])
+    # model.fit(X, y)
+    # # plot feature importance
+    # plt.figure(figsize=(12, 8))
+    # sns.barplot(x=model.feature_importances_, y=X.columns)
+    # plt.title('Feature Importance RandomForest')
+    # plt.savefig('Feature Importance RandomForest.png')
+    # plt.clf()
+
+    # # 线性回归特征重要性
+    # from sklearn.linear_model import LinearRegression
+    # model = LinearRegression(n_jobs=kwargs['NJ'])
+    # model.fit(X, y)
+    # from copy import copy
+    # coef = abs(copy(model.coef_))
+    # # plot feature importance
+    # plt.figure(figsize=(12, 8))
+    # sns.barplot(x=coef, y=X.columns)
+    # plt.title('Feature Importance LinearRegression')
+    # plt.savefig('Feature Importance LinearRegression.png')
+    # plt.clf()
 
     # # 逻辑回归特征重要性
     # from sklearn.linear_model import LogisticRegression

@@ -1,4 +1,4 @@
-import numpy as np
+from mapping import decode
 import pandas as pd
 from matplotlib import pyplot as plt
 def output(final_model, test_data: pd.DataFrame, **kwargs):
@@ -8,7 +8,7 @@ def output(final_model, test_data: pd.DataFrame, **kwargs):
     y_pred = final_model.predict(X)
     # output to csv
     test_data[col_b] = y_pred
-    test_data[col_b] = np.expm1(test_data[col_b])
+    test_data[col_b] = decode(test_data[col_b])
     test_data[[col_a, col_b]].to_csv('result.csv', index=False)
     # Price Distribution (Predicted)
     plt.hist(test_data[col_b], bins=50, color='blue')

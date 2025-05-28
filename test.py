@@ -56,12 +56,15 @@ train_data, eval_data = train_test_split(train_data, test_size=0.2, random_state
 
 # 模型训练与数据调优
 print("开始训练")
-lr_model = get_best_lr_model(train_data, **info); eval_metrics(lr_model, eval_data, **info)
+# lr_model = get_best_lr_model(train_data, **info); eval_metrics(lr_model, eval_data, **info)
 rf_model = get_best_rf_model(train_data, **info); eval_metrics(rf_model, eval_data, **info)
 xgb_model = get_best_xgb_model(train_data, **info); eval_metrics(xgb_model, eval_data, **info)
+lgb_model = get_best_lgb_model(train_data, **info); eval_metrics(lgb_model, eval_data, **info)
+# svm_model = get_best_svm_model(train_data, **info); eval_metrics(svm_model, eval_data, **info)
+# final_model = svm_model
 
 # 模型融合
-soft_voting_of_best_model = get_soft_voting_model([xgb_model, rf_model], train_data, **info); eval_metrics(soft_voting_of_best_model, eval_data, **info)
+soft_voting_of_best_model = get_soft_voting_model([xgb_model, lgb_model, rf_model], train_data, **info); eval_metrics(soft_voting_of_best_model, eval_data, **info)
 final_model = soft_voting_of_best_model
 
 
